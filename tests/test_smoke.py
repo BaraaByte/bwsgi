@@ -1,4 +1,4 @@
-"""Smoke and regression tests for Vinod. Run: python -m unittest discover -v."""
+"""Smoke and regression tests for Bwsgi. Run: python -m unittest discover -v."""
 import io
 import json
 import threading
@@ -7,8 +7,8 @@ from tempfile import TemporaryDirectory
 from pathlib import Path
 from urllib.parse import urlencode
 
-from vinod import Vinod, Response, csrf_protect
-from vinod.auth import hash_password, verify_password
+from bwsgi import Bwsgi, Response, csrf_protect
+from bwsgi.auth import hash_password, verify_password
 
 
 def request(app, path, method="GET", body=b"", extra_environ=None):
@@ -31,14 +31,14 @@ def request(app, path, method="GET", body=b"", extra_environ=None):
     return captured
 
 
-class VinodTests(unittest.TestCase):
+class BwsgiTests(unittest.TestCase):
     def test_password_roundtrip(self):
         hashed, salt = hash_password("hunter2")
         self.assertTrue(verify_password("hunter2", hashed, salt))
         self.assertFalse(verify_password("wrong", hashed, salt))
 
     def test_memory_database_stays_in_memory(self):
-        app = Vinod(db_path=":memory:")
+        app = Bwsgi(db_path=":memory:")
         self.assertIn("mode=memory", app.db.db_path)
         self.assertIsNotNone(app.db.fetchone("SELECT name FROM sqlite_master"))
         result = []
@@ -52,7 +52,7 @@ class VinodTests(unittest.TestCase):
         self.assertTrue(result)
 
     def test_route_parameters_and_url_for(self):
-        app = Vinod(db_path=":memory:")
+        app = Bwsgi(db_path=":memory:")
 
         @app.route("/users/<username>")
         def user(req, username):
@@ -64,7 +64,7 @@ class VinodTests(unittest.TestCase):
         self.assertEqual(response["body"], b"Jane Doe")
 
     def test_method_not_allowed_returns_allow_header(self):
-        app = Vinod(db_path=":memory:")
+        app = Bwsgi(db_path=":memory:")
 
         @app.route("/submit", methods=("POST",))
         def submit(req):
@@ -75,7 +75,7 @@ class VinodTests(unittest.TestCase):
         self.assertIn(("Allow", "POST"), response["headers"])
 
     def test_invalid_json_returns_bad_request(self):
-        app = Vinod(db_path=":memory:")
+        app = Bwsgi(db_path=":memory:")
 
         @app.route("/json", methods=("POST",))
         def json_view(req):
@@ -85,7 +85,7 @@ class VinodTests(unittest.TestCase):
         self.assertEqual(response["status"], "400 Bad Request")
 
     def test_static_prefix_does_not_capture_neighboring_paths(self):
-        app = Vinod(db_path=":memory:")
+        app = Bwsgi(db_path=":memory:")
         app.config["STATIC_DIR"] = "static"
 
         @app.route("/staticized")
@@ -99,7 +99,7 @@ class VinodTests(unittest.TestCase):
     def test_static_file_serving_and_traversal_protection(self):
         with TemporaryDirectory() as static_dir:
             Path(static_dir, "hello.txt").write_text("hello", encoding="utf-8")
-            app = Vinod(db_path=":memory:", static_dir=static_dir)
+            app = Bwsgi(db_path=":memory:", static_dir=static_dir)
 
             served = request(app, "/static/hello.txt")
             self.assertEqual(served["status"], "200 OK")
@@ -121,7 +121,7 @@ class VinodTests(unittest.TestCase):
                 next(chunks)
 
     def test_json_schema_validation(self):
-        app = Vinod(db_path=":memory:")
+        app = Bwsgi(db_path=":memory:")
 
         @app.route("/api/items", methods=("POST",))
         def create_item(req):
@@ -142,7 +142,7 @@ class VinodTests(unittest.TestCase):
         self.assertIn(b'"quantity": "Expected int"', invalid["body"])
 
     def test_session_and_csrf_protection(self):
-        app = Vinod(db_path=":memory:", secret_key="test-secret")
+        app = Bwsgi(db_path=":memory:", secret_key="test-secret")
 
         @app.route("/token")
         def token(req):
@@ -197,7 +197,7 @@ class VinodTests(unittest.TestCase):
         self.assertEqual(json.loads(state["body"]), {"changed": True})
 
     def test_csrf_form_field_is_supported(self):
-        app = Vinod(db_path=":memory:")
+        app = Bwsgi(db_path=":memory:")
 
         @app.route("/token")
         def token(req):
@@ -226,7 +226,7 @@ class VinodTests(unittest.TestCase):
     def test_session_survives_app_recreation_with_same_secret(self):
         with TemporaryDirectory() as directory:
             db_path = str(Path(directory, "sessions.db"))
-            first_app = Vinod(db_path=db_path, secret_key="persistent-test-key")
+            first_app = Bwsgi(db_path=db_path, secret_key="persistent-test-key")
 
             @first_app.route("/create")
             def create(req):
@@ -240,7 +240,7 @@ class VinodTests(unittest.TestCase):
                 if key == "Set-Cookie"
             )
 
-            second_app = Vinod(db_path=db_path, secret_key="persistent-test-key")
+            second_app = Bwsgi(db_path=db_path, secret_key="persistent-test-key")
 
             @second_app.route("/read")
             def read(req):
@@ -254,7 +254,7 @@ class VinodTests(unittest.TestCase):
             second_app.db.conn.close()
 
     def test_exception_class_error_handler(self):
-        app = Vinod(db_path=":memory:")
+        app = Bwsgi(db_path=":memory:")
 
         @app.route("/failure")
         def failure(req):
@@ -273,7 +273,7 @@ class VinodTests(unittest.TestCase):
             Path(template_dir, "hello.html").write_text(
                 "<h1>{{ name }}</h1>", encoding="utf-8"
             )
-            app = Vinod(db_path=":memory:", template_dir=template_dir)
+            app = Bwsgi(db_path=":memory:", template_dir=template_dir)
 
             @app.route("/")
             def home(req):

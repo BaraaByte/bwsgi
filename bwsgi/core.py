@@ -1,4 +1,4 @@
-"""Vinod core - WSGI application, router, request, response."""
+"""Bwsgi core - WSGI application, router, request, response."""
 import re
 import json
 import traceback
@@ -155,7 +155,7 @@ class Response:
         return status, h, chunks()
 
 
-class Vinod:
+class Bwsgi:
     """The main WSGI application."""
 
     def __init__(self, db_path="app.db", static_dir="static",
@@ -175,7 +175,7 @@ class Vinod:
             "STATIC_DIR": static_dir,
             "STATIC_URL": static_url,
             "TEMPLATE_DIR": template_dir,
-            "SESSION_COOKIE_NAME": "vinod_session",
+            "SESSION_COOKIE_NAME": "bwsgi_session",
             "DB_PATH": db_path,
         }
 
@@ -258,7 +258,7 @@ class Vinod:
         return Response.html(body)
 
     def register(self, extension):
-        """Register a Vinod extension. Extension must expose init_app(app)."""
+        """Register a Bwsgi extension. Extension must expose init_app(app)."""
         name = extension.__class__.__name__.lower()
         if hasattr(extension, "init_app"):
             extension.init_app(self)
@@ -273,7 +273,7 @@ class Vinod:
         ).hexdigest()
 
     def _load_session(self, req):
-        cookie = req.cookies.get(self.config.get("SESSION_COOKIE_NAME", "vinod_session"))
+        cookie = req.cookies.get(self.config.get("SESSION_COOKIE_NAME", "bwsgi_session"))
         if not cookie:
             return {}, None
         try:
@@ -435,6 +435,6 @@ class Vinod:
 
     def run(self, host="127.0.0.1", port=8000):
         from wsgiref.simple_server import make_server
-        print(f"Vinod running on http://{host}:{port}")
+        print(f"Bwsgi running on http://{host}:{port}")
         with make_server(host, port, self) as httpd:
             httpd.serve_forever()

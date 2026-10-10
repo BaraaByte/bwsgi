@@ -1,9 +1,9 @@
-# Vinod
+# Bwsgi
 
 Ultra-lightweight, **zero-dependency** Python WSGI framework.
 Flask-style routing. Django-style auth. Built on the Python Standard Library.
 
-## Why Vinod?
+## Why Bwsgi?
 
 - **Zero dependencies** — pure Python stdlib
 - **~5-8 MB idle RAM** — runs happily on 512MB hosts like Serv00
@@ -14,19 +14,19 @@ Flask-style routing. Django-style auth. Built on the Python Standard Library.
 ## Install
 
 ```bash
-pip install vinod
+pip install bwsgi
 ```
 
 ## Quick Start
 
 ```python
-from vinod import Vinod, Response, login_required
+from bwsgi import Bwsgi, Response, login_required
 
-app = Vinod(db_path="app.db")
+app = Bwsgi(db_path="app.db")
 
 @app.route("/")
 def home(req):
-    return Response.html("<h1>Hello from Vinod</h1>")
+    return Response.html("<h1>Hello from Bwsgi</h1>")
 
 @app.route("/dashboard")
 @login_required
@@ -78,7 +78,7 @@ a signed, HTTP-only cookie. Set a stable secret key when creating the app so
 session cookies survive process restarts:
 
 ```python
-app = Vinod(db_path="app.db", secret_key="load-this-from-your-environment")
+app = Bwsgi(db_path="app.db", secret_key="load-this-from-your-environment")
 ```
 
 Protect state-changing routes with `@csrf_protect`. Render `req.csrf_token()`

@@ -7,7 +7,7 @@ from pathlib import Path
 class Database:
     def __init__(self, db_path: str = "app.db"):
         self._memory_uri = (
-            f"file:vinod-{id(self)}?mode=memory&cache=shared"
+            f"file:bwsgi-{id(self)}?mode=memory&cache=shared"
             if db_path == ":memory:"
             else None
         )

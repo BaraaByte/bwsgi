@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bwsgi"
-version = "0.1.0"
+version = "0.1.1"
 description = "Ultra-lightweight, zero-dependency Python WSGI framework"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -36,5 +36,5 @@ Repository = "https://github.com/BaraaByte/bwsgi"
 Issues = "https://github.com/BaraaByte/bwsgi/issues"
 
 [tool.setuptools]
-packages = ["vinod"]
+packages = ["bwsgi"]
 include-package-data = true

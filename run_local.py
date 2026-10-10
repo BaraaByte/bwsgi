@@ -2,18 +2,18 @@
 import html
 import sqlite3
 
-from vinod import (
-    Vinod, Response, csrf_protect, login_required,
+from bwsgi import (
+    Bwsgi, Response, csrf_protect, login_required,
     hash_password, verify_password, new_session_token, session_expiry,
 )
 
-app = Vinod(db_path="app.db", debug=True)
+app = Bwsgi(db_path="app.db", debug=True)
 
 
 @app.route("/")
 def home(req):
     return Response.html(
-        "<h1>Welcome to Vinod</h1>"
+        "<h1>Welcome to Bwsgi</h1>"
         "<p><a href='/dashboard'>Dashboard</a> | "
         "<a href='/login'>Login</a> | "
         "<a href='/register'>Register</a></p>"

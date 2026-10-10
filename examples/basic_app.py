@@ -1,7 +1,7 @@
-"""Minimal Vinod app."""
-from vinod import Vinod, Response
+"""Minimal Bwsgi app."""
+from bwsgi import Bwsgi, Response
 
-app = Vinod(db_path="example.db")
+app = Bwsgi(db_path="example.db")
 
 @app.route("/")
 def index(req):
