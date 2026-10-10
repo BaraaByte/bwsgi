@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vinod"
+version = "0.1.0"
+description = "Ultra-lightweight, zero-dependency Python WSGI framework with Flask-style routing and Django-style auth."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" } # Updated to reference your physical file
+authors = [{ name = "Baraa Ahmed", email = "baraa.runtime@gmail.com" }]
+keywords = ["wsgi", "framework", "zero-dependency", "serv00", "freebsd", "flask-like"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: BSD :: FreeBSD",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: WSGI",
+    "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com"  # Update placeholder
+Repository = "https://github.com" # Update placeholder
+Issues = "https://github.com/issues" # Update placeholder
+
+[tool.setuptools]
+packages = ["vinod"]
+include-package-data = true # Automatically bundles py.typed and other internal non-code files
