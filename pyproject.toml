@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77.0.0", "wheel"] # Updated minimum version for PEP 639
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,13 +8,17 @@ version = "0.1.0"
 description = "Ultra-lightweight, zero-dependency Python WSGI framework with Flask-style routing and Django-style auth."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { file = "LICENSE" } # Updated to reference your physical file
+
+# Modern PEP 639 standard configurations
+license = "MIT"
+license-files = ["LICENSE"] 
+
 authors = [{ name = "Baraa Ahmed", email = "baraa.runtime@gmail.com" }]
 keywords = ["wsgi", "framework", "zero-dependency", "serv00", "freebsd", "flask-like"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    # Removed the deprecated "License :: OSI Approved" classifier line
     "Operating System :: POSIX :: BSD :: FreeBSD",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
@@ -28,10 +32,10 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com"  # Update placeholder
-Repository = "https://github.com" # Update placeholder
-Issues = "https://github.com/issues" # Update placeholder
+Homepage = "https://github.com/BaraaByte/vinod"
+Repository = "https://github.com/BaraaByte/vinod"
+Issues = "https://github.com/BaraaByte/vinod/issues"
 
 [tool.setuptools]
 packages = ["vinod"]
-include-package-data = true # Automatically bundles py.typed and other internal non-code files
+include-package-data = true
