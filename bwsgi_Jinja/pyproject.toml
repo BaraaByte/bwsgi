@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bwsgi-jinja"
+version = "0.1.0"
+description = "Optional Jinja2 template integration for Bwsgi"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+dependencies = ["bwsgi>=0.1.1", "Jinja2>=3.1,<4"]
+
+[tool.setuptools]
+packages = ["bwsgi_jinja"]

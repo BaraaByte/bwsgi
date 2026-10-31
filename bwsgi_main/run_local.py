@@ -1,5 +1,6 @@
 """Local dev server. Run: python run_local.py"""
 import html
+import os
 import sqlite3
 
 from bwsgi import (
@@ -7,7 +8,12 @@ from bwsgi import (
     hash_password, verify_password, new_session_token, session_expiry,
 )
 
-app = Bwsgi(db_path="app.db", debug=True)
+_secret_key = os.environ.get("BWSGI_SECRET_KEY")
+app = Bwsgi(
+    db_path=os.environ.get("BWSGI_DB_PATH", "app.db"),
+    secret_key=_secret_key,
+    production=__name__ != "__main__",
+)
 
 
 @app.route("/")
@@ -52,7 +58,15 @@ def login(req):
         "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
         (token, row["id"], session_expiry(days)),
     )
-    secure = "; Secure" if req.environ.get("wsgi.url_scheme") == "https" else ""
+    secure_cookie = app.config.get("SESSION_COOKIE_SECURE")
+    secure = (
+        "; Secure"
+        if secure_cookie is True or (
+            secure_cookie is None
+            and req.environ.get("wsgi.url_scheme") == "https"
+        )
+        else ""
+    )
     cookie = (
         f"sessionid={token}; Path=/; HttpOnly; SameSite=Lax; "
         f"Max-Age={days * 86400}{secure}"
@@ -102,7 +116,15 @@ def logout(req):
     if cookie:
         app.db.execute("DELETE FROM sessions WHERE token = ?", (cookie.value,))
     req.session.clear()
-    secure = "; Secure" if req.environ.get("wsgi.url_scheme") == "https" else ""
+    secure_cookie = app.config.get("SESSION_COOKIE_SECURE")
+    secure = (
+        "; Secure"
+        if secure_cookie is True or (
+            secure_cookie is None
+            and req.environ.get("wsgi.url_scheme") == "https"
+        )
+        else ""
+    )
     return Response.redirect("/", headers=[
         ("Set-Cookie", f"sessionid=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax{secure}")
     ])
@@ -133,4 +155,5 @@ def not_found(req):
 
 
 if __name__ == "__main__":
+    app.config["DEBUG"] = True
     app.run(host="127.0.0.1", port=8000)

@@ -1,4 +1,5 @@
 """Thread-safe SQLite connection manager. One connection per thread."""
+import os
 import sqlite3
 import threading
 from pathlib import Path
@@ -17,12 +18,13 @@ class Database:
 
     @property
     def conn(self) -> sqlite3.Connection:
-        if not hasattr(self._local, "conn"):
+        if getattr(self._local, "pid", None) != os.getpid():
             self._local.conn = sqlite3.connect(
                 self.db_path,
                 timeout=10.0,
                 uri=self._memory_uri is not None,
             )
+            self._local.pid = os.getpid()
             self._local.conn.row_factory = sqlite3.Row
             self._local.conn.execute("PRAGMA journal_mode=WAL;")
             self._local.conn.execute("PRAGMA foreign_keys=ON;")

@@ -8,13 +8,92 @@ import copy
 import hmac
 import hashlib
 import html
+import logging
+import os
 from pathlib import Path
+import sys
+import threading
+import time
 from http.cookies import SimpleCookie
 from typing import Any
 from urllib.parse import parse_qs, quote, urlparse
+from wsgiref.simple_server import WSGIRequestHandler
 
 from .auth import session_expiry
 from .db import Database
+
+
+_LOGGER = logging.getLogger("bwsgi")
+_DEFAULT_MAX_CONTENT_LENGTH = 1024 * 1024
+
+
+_COLORS = {
+    "bold": "\033[1m",
+    "cyan": "\033[36m",
+    "green": "\033[32m",
+    "yellow": "\033[33m",
+    "red": "\033[31m",
+    "muted": "\033[2m",
+    "reset": "\033[0m",
+}
+_RELOAD_IGNORED_DIRS = {
+    ".git", ".hg", ".svn", "__pycache__", ".venv", "venv",
+    "build", "dist", ".tox",
+}
+
+
+def _supports_color(stream):
+    return (
+        stream.isatty()
+        and "NO_COLOR" not in os.environ
+        and os.environ.get("TERM") != "dumb"
+    )
+
+
+def _source_snapshot(root):
+    """Return modification metadata for local Python files."""
+    files = {}
+    for directory, subdirectories, filenames in os.walk(root):
+        subdirectories[:] = [
+            name for name in subdirectories
+            if name not in _RELOAD_IGNORED_DIRS
+        ]
+        for filename in filenames:
+            if filename.endswith(".py"):
+                path = Path(directory, filename)
+                try:
+                    stat = path.stat()
+                except FileNotFoundError:
+                    continue
+                files[str(path)] = (stat.st_mtime_ns, stat.st_size)
+    return files
+
+
+def _watch_sources(root, initial_snapshot):
+    while True:
+        time.sleep(0.5)
+        if _source_snapshot(root) != initial_snapshot:
+            print("\n  Source change detected; restarting Bwsgi...\n", flush=True)
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
+class _ColorRequestHandler(WSGIRequestHandler):
+    def log_message(self, format, *args):
+        message = format % args
+        match = re.search(r'"\s+(\d{3})\b', message)
+        color = "green"
+        if match:
+            status = int(match.group(1))
+            if status >= 500:
+                color = "red"
+            elif status >= 400:
+                color = "yellow"
+
+        timestamp = self.log_date_time_string()
+        if _supports_color(sys.stderr):
+            message = f"{_COLORS[color]}{message}{_COLORS['reset']}"
+            timestamp = f"{_COLORS['muted']}{timestamp}{_COLORS['reset']}"
+        print(f"{timestamp}  {message}", file=sys.stderr, flush=True)
 
 
 class RequestValidationError(ValueError):
@@ -25,6 +104,14 @@ class RequestValidationError(ValueError):
         super().__init__("Request validation failed")
 
 
+class RequestBodyError(ValueError):
+    """Raised when a request body has an invalid Content-Length."""
+
+
+class RequestEntityTooLarge(ValueError):
+    """Raised when a request exceeds the configured body size limit."""
+
+
 class Request:
     """Lightweight request context passed to every view."""
 
@@ -32,6 +119,24 @@ class Request:
         self.environ = environ
         self.db = db
         self.app = app
+        content_length = environ.get("CONTENT_LENGTH", "")
+        if content_length:
+            if (
+                not isinstance(content_length, str)
+                or re.fullmatch(r"[0-9]+", content_length) is None
+            ):
+                raise RequestBodyError("Invalid Content-Length")
+            normalized_length = content_length.lstrip("0") or "0"
+            max_length = app.config["MAX_CONTENT_LENGTH"]
+            if len(normalized_length) > len(str(max_length)):
+                raise RequestEntityTooLarge(
+                    "Request body exceeds configured limit"
+                )
+            self._content_length = int(normalized_length)
+        else:
+            self._content_length = 0
+        if self._content_length > app.config["MAX_CONTENT_LENGTH"]:
+            raise RequestEntityTooLarge("Request body exceeds configured limit")
         self.method = environ["REQUEST_METHOD"].upper()
         parsed = urlparse(environ.get("PATH_INFO", "/"))
         self.path = parsed.path
@@ -57,12 +162,10 @@ class Request:
     @property
     def body(self) -> bytes:
         if self._body is None:
-            try:
-                length = int(self.environ.get("CONTENT_LENGTH") or 0)
-            except ValueError:
-                length = 0
-            self._body = (self.environ["wsgi.input"].read(length)
-                          if length else b"")
+            self._body = (
+                self.environ["wsgi.input"].read(self._content_length)
+                if self._content_length else b""
+            )
         return self._body
 
     def json(self) -> Any:
@@ -160,7 +263,25 @@ class Bwsgi:
 
     def __init__(self, db_path="app.db", static_dir="static",
                  static_url="/static", debug=False, secret_key=None,
-                 template_dir="templates"):
+                 template_dir="templates",
+                 max_content_length=_DEFAULT_MAX_CONTENT_LENGTH,
+                 production=False):
+        if not isinstance(production, bool):
+            raise ValueError("production must be a boolean")
+        if production and (
+            not isinstance(secret_key, str)
+            or len(secret_key.encode("utf-8")) < 32
+        ):
+            raise ValueError(
+                "Production mode requires an explicit secret_key "
+                "of at least 32 bytes"
+            )
+        if (
+            isinstance(max_content_length, bool)
+            or not isinstance(max_content_length, int)
+            or max_content_length < 0
+        ):
+            raise ValueError("max_content_length must be a non-negative integer")
         self.db = Database(db_path)
         self.routes = []
         self.before_hooks = []
@@ -168,15 +289,18 @@ class Bwsgi:
         self.error_handlers = {}
         self.extensions = {}
         self._wsgi_app = self._dispatch
+        self.production = production
         self.config = {
-            "DEBUG": debug,
+            "DEBUG": bool(debug) and not production,
             "SECRET_KEY": secret_key or secrets.token_hex(32),
             "SESSION_DAYS": 7,
             "STATIC_DIR": static_dir,
             "STATIC_URL": static_url,
             "TEMPLATE_DIR": template_dir,
             "SESSION_COOKIE_NAME": "bwsgi_session",
+            "SESSION_COOKIE_SECURE": True if production else None,
             "DB_PATH": db_path,
+            "MAX_CONTENT_LENGTH": max_content_length,
         }
 
     def route(self, path, methods=("GET",)):
@@ -313,7 +437,18 @@ class Bwsgi:
             (session_id, json.dumps(req.session), expires_at),
         )
         signature = self._sign_session_id(session_id)
-        secure = "; Secure" if req.environ.get("wsgi.url_scheme") == "https" else ""
+        secure_cookie = (
+            True if self.production
+            else self.config.get("SESSION_COOKIE_SECURE")
+        )
+        secure = (
+            "; Secure"
+            if secure_cookie is True or (
+                secure_cookie is None
+                and req.environ.get("wsgi.url_scheme") == "https"
+            )
+            else ""
+        )
         cookie = (
             f"{self.config['SESSION_COOKIE_NAME']}={session_id}.{signature}; "
             f"Path=/; HttpOnly; SameSite=Lax; "
@@ -410,7 +545,23 @@ class Bwsgi:
                     {"error": "Invalid request body"},
                     "400 Bad Request",
                 ), start_response)
-            tb = traceback.format_exc() if self.config["DEBUG"] else ""
+            if isinstance(exc, RequestBodyError):
+                return self._emit(Response.text(
+                    "Invalid Content-Length", "400 Bad Request",
+                ), start_response)
+            if isinstance(exc, RequestEntityTooLarge):
+                return self._emit(Response.text(
+                    "Request Entity Too Large", "413 Payload Too Large",
+                ), start_response)
+            _LOGGER.exception(
+                "Unhandled exception while processing %s request",
+                req.method if req is not None else environ.get("REQUEST_METHOD", "unknown"),
+            )
+            tb = (
+                traceback.format_exc()
+                if self.config["DEBUG"] and not self.production
+                else ""
+            )
             handler = self.error_handlers.get(500)
             if handler and req is not None:
                 result = handler(req)
@@ -434,7 +585,50 @@ class Bwsgi:
         return body
 
     def run(self, host="127.0.0.1", port=8000):
+        """Run the standard-library development server."""
+        if self.production:
+            raise RuntimeError(
+                "Bwsgi's development server cannot run in production mode; "
+                "use a production WSGI server"
+            )
         from wsgiref.simple_server import make_server
-        print(f"Bwsgi running on http://{host}:{port}")
-        with make_server(host, port, self) as httpd:
+        color = _supports_color(sys.stdout)
+        title = "BWSGI"
+        if color:
+            title = (
+                f"{_COLORS['bold']}{_COLORS['cyan']}"
+                f"{title}{_COLORS['reset']}"
+            )
+        debug_enabled = self.config["DEBUG"] and not self.production
+        mode = "DEBUG / LIVE RELOAD" if debug_enabled else "DEVELOPMENT SERVER"
+        mode_color = "yellow" if debug_enabled else "green"
+        if color:
+            mode = f"{_COLORS[mode_color]}{mode}{_COLORS['reset']}"
+        print(
+            f"\n {title}  "
+            f"{_COLORS['muted'] if color else ''}"
+            f"DEVELOPMENT WSGI SERVER (wsgiref)"
+            f"{_COLORS['reset'] if color else ''}\n"
+            f" {'-' * 48}\n"
+            f"  URL     http://{host}:{port}\n"
+            f"  MODE    {mode}\n"
+            f"  STOP    Ctrl+C\n"
+            f" {'-' * 48}",
+            flush=True,
+        )
+
+        if debug_enabled:
+            script = Path(sys.argv[0])
+            root = script.resolve().parent if script.is_file() else Path.cwd()
+            initial_snapshot = _source_snapshot(root)
+            threading.Thread(
+                target=_watch_sources,
+                args=(root, initial_snapshot),
+                name="bwsgi-debug-reloader",
+                daemon=True,
+            ).start()
+
+        with make_server(
+            host, port, self, handler_class=_ColorRequestHandler
+        ) as httpd:
             httpd.serve_forever()

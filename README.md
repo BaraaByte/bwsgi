@@ -9,6 +9,7 @@ Flask-style routing. Django-style auth. Built on the Python Standard Library.
 - **~5-8 MB idle RAM** — runs happily on 512MB hosts like Serv00
 - **Flask-style routing** — decorator-based, familiar syntax
 - **Secure auth built in** — PBKDF2 password hashing + DB-backed sessions
+- **Bounded request bodies** — 1 MiB default, configurable per app
 - **WSGI native** — works with Passenger, Gunicorn, uWSGI
 
 ## Install
@@ -16,6 +17,13 @@ Flask-style routing. Django-style auth. Built on the Python Standard Library.
 ```bash
 pip install bwsgi
 ```
+
+Optional middleware/utilities, Jinja, and ItsDangerous integrations are
+maintained as separate companion projects outside the `bwsgi_main` project.
+They are not included in the `bwsgi` distribution and must be installed
+separately from their respective project sources or package distributions.
+
+The core `bwsgi` installation remains zero-dependency.
 
 ## Quick Start
 
@@ -36,6 +44,24 @@ def dashboard(req):
 if __name__ == "__main__":
     app.run()
 ```
+
+## Debug server
+
+Set `debug=True` to enable detailed error pages and automatic code reloads:
+
+```python
+app = Bwsgi(debug=True)
+
+if __name__ == "__main__":
+    app.run()
+```
+
+Run the application from its Python entry-point file. The debug server watches
+Python files next to that entry point (excluding virtual environments and
+build/cache directories) and restarts the process when they change. The
+development server also prints a styled startup banner and colored request
+logs when running in a terminal; color is disabled automatically when output
+is redirected or `NO_COLOR` is set.
 
 ## Routing and responses
 
@@ -69,6 +95,14 @@ fields and Python types. Malformed JSON and invalid values return a JSON
 def create_item(req):
     item = req.validate_json({"name": str, "quantity": int})
     return Response.json(item, "201 Created")
+```
+
+Request bodies are limited to 1 MiB by default; larger requests receive
+`413 Payload Too Large`. Set `max_content_length` when creating the app to
+choose a different non-negative byte limit:
+
+```python
+app = Bwsgi(max_content_length=2 * 1024 * 1024)
 ```
 
 ## Sessions and CSRF
@@ -124,6 +158,24 @@ def request_id_middleware(next_app):
 app.add_middleware(request_id_middleware)
 ```
 
+Basic CORS support is available as standard-library middleware. Configure
+explicit origins, methods, and request headers for your API:
+
+```python
+from bwsgi import CORSMiddleware
+
+app.add_middleware(CORSMiddleware(
+    allowed_origins=("https://example.com",),
+    allowed_methods=("GET", "POST"),
+    allowed_headers=("Content-Type", "X-Csrf-Token"),
+    allow_credentials=True,
+))
+```
+
+Preflight requests are answered automatically. Wildcard origins cannot be
+combined with credentialed requests; leave `allowed_origins` empty to disable
+cross-origin access.
+
 Error handlers may be registered for HTTP status codes or exception classes:
 
 ```python
@@ -131,6 +183,38 @@ Error handlers may be registered for HTTP status codes or exception classes:
 def invalid_value(req):
     return Response.json({"error": "invalid value"}, "400 Bad Request")
 ```
+
+## Production deployment
+
+Use a production WSGI server such as Gunicorn, uWSGI, or Passenger behind
+HTTPS. `app.run()` uses Python's `wsgiref` development server and is not
+intended for production. The `run_local.py` example enables debug mode only
+when launched directly.
+
+When importing `run_local:app` or `passenger_wsgi:application` as a WSGI
+application, configure a persistent, high-entropy `BWSGI_SECRET_KEY` in the
+application environment (at least 32 bytes). These entrypoints create Bwsgi in
+production mode, which fails at startup if the secret is missing or too short,
+disables debug behavior, and forces session cookies to use `Secure`, including
+behind a TLS-terminating proxy. Direct `python run_local.py` remains a local
+development mode. Set `BWSGI_DB_PATH` to the intended SQLite file path if the
+default `app.db` location is not appropriate.
+Generate the secret with a cryptographically secure generator (for example,
+`python -c "import secrets; print(secrets.token_urlsafe(32))"`), store it in a
+secret manager, and keep the same value across worker restarts.
+
+For a custom WSGI entry point, load a persistent secret and create the app
+with `Bwsgi(secret_key=..., production=True)`. All workers sharing sessions
+must use the same secret and database. SQLite is intended for lightweight
+deployments; use a database designed for concurrent write-heavy workloads as
+traffic and worker count grow.
+
+Unhandled application exceptions are logged to the `bwsgi` Python logger.
+Configure your server's logging handlers to collect these logs. Production
+responses do not include traceback details. Production mode does not configure
+TLS, reverse-proxy headers, server worker/process limits, database backups, or
+monitoring; configure and verify these in your deployment. Do not expose
+`app.run()` (the `wsgiref` development server) to production traffic.
 
 ## License
 

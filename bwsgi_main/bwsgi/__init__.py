@@ -6,10 +6,11 @@ from .auth import (
     new_session_token, session_expiry,
 )
 from .db import Database
+from .cors import CORSMiddleware
 
 __version__ = "0.1.0"
 __all__ = [
-    "Bwsgi", "Request", "Response", "Database",
+    "Bwsgi", "Request", "Response", "Database", "CORSMiddleware",
     "login_required", "csrf_protect", "RequestValidationError",
     "hash_password", "verify_password",
     "new_session_token", "session_expiry",
